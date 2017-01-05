@@ -33,11 +33,11 @@ public class PlayRoom extends JFrame{
     BufferedWriter bufferedWriter;
     JPanel panel_p1info, panel_p2info, panel_info;
     Canvas panel_othello;
-    JPanel panel_sendmsg, panel_game, panel_south, panel_chat;
+    JPanel panel_center, panel_sendmsg, panel_game, panel_south, panel_chat;
     JLabel label_p1name, label_p2name;
     JLabel label_p1status, label_p2status;
     JLabel label_p1count, label_p2count;
-    TextArea text_getmsg;
+    TextArea text_playinfo, text_getmsg;
     TextField text_sendmsg;
     JButton btn_send, btn_giveup, btn_restart;
     PlayHandler playHandler;
@@ -47,6 +47,7 @@ public class PlayRoom extends JFrame{
     int blocksize;
     int piecesize;
     int left, top;
+    int highlightx, highlighty;
 
     public PlayRoom(BufferedReader r, BufferedWriter w, int num, String name, String oppo, int color) {
         bufferedReader = r;
@@ -75,14 +76,16 @@ public class PlayRoom extends JFrame{
             }
         });
         this.setVisible(true);
-        text_getmsg.append(username + "进入了房间。\n");
+        text_playinfo.append(username + "进入了房间。\n");
         if (opponame.isEmpty()) {
             waitingstatus();
         }
         else if (usercolor == CHESS_BLACK) {
+            text_playinfo.append(username + ": 开始游戏，执黑先行。\n");
             userturn();
         }
         else {
+            text_playinfo.append(username + ": 开始游戏，执白后行。\n");
             oppoturn();
         }
         playHandler = new PlayHandler();
@@ -95,6 +98,8 @@ public class PlayRoom extends JFrame{
                 chessboard[j][i] = CHESS_EMPTY;
         chessboard[3][3] = chessboard[4][4] = CHESS_BLACK;
         chessboard[4][3] = chessboard[3][4] = CHESS_WHITE;
+        highlightx = -1;
+        highlighty = -1;
     }
 
     private void initLayout() {
@@ -103,6 +108,7 @@ public class PlayRoom extends JFrame{
         panel_info = new JPanel();
         panel_othello = new Canvas();
         panel_sendmsg = new JPanel();
+        panel_center = new JPanel();
         panel_game = new JPanel();
         panel_south = new JPanel();
         panel_chat = new JPanel();
@@ -124,6 +130,7 @@ public class PlayRoom extends JFrame{
         panel_info.add(panel_p1info,  BorderLayout.SOUTH);
         panel_info.add(panel_p2info,  BorderLayout.NORTH);
         panel_info.setPreferredSize(new Dimension(200, 400));
+        text_playinfo = new TextArea(20, 20);
         text_getmsg = new TextArea(20, 20);
         text_sendmsg = new TextField(20);
         btn_send = new JButton("发送");
@@ -136,14 +143,18 @@ public class PlayRoom extends JFrame{
         panel_south.setLayout(new BorderLayout());
         panel_south.add(panel_sendmsg, BorderLayout.NORTH);
         panel_south.add(panel_game, BorderLayout.SOUTH);
+        panel_center.setLayout(new GridLayout(2, 1));
+        panel_center.add(text_playinfo);
+        panel_center.add(text_getmsg);
+        text_playinfo.setEditable(false);
+        text_getmsg.setEditable(false);
         panel_chat.setLayout(new BorderLayout());
-        panel_chat.add(text_getmsg, BorderLayout.CENTER);
+        panel_chat.add(panel_center, BorderLayout.CENTER);
         panel_chat.add(panel_south, BorderLayout.SOUTH);
         this.setLayout(new BorderLayout());
         this.add(panel_info, BorderLayout.WEST);
         this.add(panel_othello, BorderLayout.CENTER);
         this.add(panel_chat, BorderLayout.EAST);
-        text_getmsg.setEditable(false);
     }
 
     private void initListener() {
@@ -194,6 +205,7 @@ public class PlayRoom extends JFrame{
                         sendMsg("play");
                         sendMsg(String.valueOf(x));
                         sendMsg(String.valueOf(y));
+                        text_playinfo.append(username + ": (" + (x + 1) + ", " + (y + 1) + ")\n");
                         oppoturn();
                     }
                     else {
@@ -231,6 +243,9 @@ public class PlayRoom extends JFrame{
                     text_getmsg.append(username + ": " + str + "\n");
                     text_sendmsg.setText("");
                 }
+                else if (text_sendmsg.getText().length() >= 100) {
+                    e.consume();
+                }
             }
             
             @Override
@@ -251,6 +266,7 @@ public class PlayRoom extends JFrame{
             public void actionPerformed(ActionEvent arg0) {
                 // TODO Auto-generated method stub
                 sendMsg("giveup");
+                text_playinfo.append(username + ": 认输。\n");
                 endstatus(oppocolor);
             }
         });
@@ -263,9 +279,11 @@ public class PlayRoom extends JFrame{
                 initboard();
                 panel_othello.repaint();
                 if (usercolor == CHESS_BLACK) {
+                    text_playinfo.append(username + ": 重新开始，执黑先行。\n");
                     userturn();
                 }
                 else {
+                    text_playinfo.append(username + ": 重新开始，执白后行。\n");
                     oppoturn();
                 }
                 JOptionPane.showMessageDialog(null, "重新开始！", "黑白棋", JOptionPane.INFORMATION_MESSAGE);
@@ -466,6 +484,10 @@ public class PlayRoom extends JFrame{
                                top + (blocksize + 1) * j + (blocksize - piecesize) / 2,
                                piecesize, piecesize);
                 }
+            if (highlightx >= 0 && highlighty >= 0) {
+                g.setColor(Color.RED);
+                g.drawRect(highlightx * (blocksize + 1) + left, highlighty * (blocksize + 1) + top, blocksize + 1, blocksize + 1);
+            }
         }
     }
 
@@ -492,6 +514,8 @@ public class PlayRoom extends JFrame{
 
     public void placepiece(int x, int y, int color) {
         chessboard[y][x] = color;
+        highlightx = x;
+        highlighty = y;
         boolean eat;
         for (int offsetx = -1; offsetx <= 1; offsetx++)
             for (int offsety = -1; offsety <= 1; offsety++) {
@@ -552,17 +576,19 @@ public class PlayRoom extends JFrame{
                 line = getMsg();
                 if (line.equals("come")) {
                     opponame = getMsg();
-                    text_getmsg.append(opponame + "进入了房间。\n");
+                    text_playinfo.append(opponame + "进入了房间。\n");
                     label_p2name.setText(opponame);
                     if (usercolor == CHESS_BLACK) {
+                        text_playinfo.append(opponame + ": 开始游戏，执白后行。\n");
                         userturn();
                     }
                     else {
+                        text_playinfo.append(opponame + ": 开始游戏，执黑先行。\n");
                         oppoturn();
                     }
                 }
                 else if (line.equals("out")) {
-                    text_getmsg.append(opponame + "离开了房间。\n");
+                    text_playinfo.append(opponame + "离开了房间。\n");
                     opponame = "";
                     initboard();
                     panel_othello.repaint();
@@ -577,9 +603,11 @@ public class PlayRoom extends JFrame{
                     int y = Integer.valueOf(getMsg()).intValue();
                     placepiece(x, y, oppocolor);
                     panel_othello.repaint();
+                    text_playinfo.append(opponame + ": (" + (x + 1) + ", " + (y + 1) + ")\n");
                     userturn();
                 }
                 else if (line.equals("giveup")) {
+                    text_playinfo.append(opponame + ": 认输。\n");
                     endstatus(usercolor);
                     JOptionPane.showMessageDialog(null, "对方认输！", "黑白棋", JOptionPane.INFORMATION_MESSAGE);
                 }
@@ -587,9 +615,11 @@ public class PlayRoom extends JFrame{
                     initboard();
                     panel_othello.repaint();
                     if (usercolor == CHESS_BLACK) {
+                        text_playinfo.append(opponame + ": 重新开始，执白后行。\n");
                         userturn();
                     }
                     else {
+                        text_playinfo.append(opponame + ": 重新开始，执黑先行。\n");
                         oppoturn();
                     }
                     JOptionPane.showMessageDialog(null, "重新开始！", "黑白棋", JOptionPane.INFORMATION_MESSAGE);

@@ -45,8 +45,6 @@ public class LoginFrame extends JFrame{
         initListener();
         text_host.setText("112.74.161.123");
         text_port.setText("12345");
-        text_username.setText("xhz636");
-        text_password.setText("xhz636");
         this.setTitle("µÇÂ¼½çÃæ");
         this.pack();
         this.setResizable(false);

@@ -76,9 +76,13 @@ public class Server extends ServerSocket {
         private BufferedReader bufferedReader;
         private BufferedWriter bufferedWriter;
         private String user;
+        private int userroom, useroffset;
         
         public CreateServerThread(Socket s) throws IOException {
             client = s;
+            user = "";
+            userroom = -1;
+            useroffset = -1;
             inSR = new InputStreamReader(client.getInputStream(), "UTF-8");
             bufferedReader = new BufferedReader(inSR);
             outSW = new OutputStreamWriter(client.getOutputStream(), "UTF-8");
@@ -119,6 +123,7 @@ public class Server extends ServerSocket {
                         onlineuser.remove(user);
                     }
                 }
+                insertlog(user, "exit");
                 System.out.println(user + " exit.");
                 bufferedWriter.close();
                 bufferedReader.close();
@@ -126,6 +131,13 @@ public class Server extends ServerSocket {
             } catch (IOException e) {
                 // TODO: handle exception
                 System.err.println(e.toString());
+                if (!user.isEmpty()) {
+                    onlineuser.remove(user);
+                    insertlog(user, "lost connection");
+                    System.out.println(user + " lost connection.");
+                }
+                if (userroom >= 0 && useroffset >= 0)
+                    room[userroom][useroffset] = "";
             }
         }
 
@@ -151,6 +163,7 @@ public class Server extends ServerSocket {
                             bufferedWriter.write("done\n");
                             user = username;
                             onlineuser.add(user);
+                            insertlog(user, "login");
                             System.out.println(user + " login.");
                         }
                         bufferedWriter.flush();
@@ -163,6 +176,10 @@ public class Server extends ServerSocket {
                 preparedStatement.setString(1, username);
                 preparedStatement.setString(2, pwdmd5);
                 preparedStatement.executeUpdate();
+                user = username;
+                onlineuser.add(user);
+                insertlog(user, "login");
+                System.out.println(user + " login.");
                 bufferedWriter.write("new\n");
                 bufferedWriter.flush();
                 resultSet.close();
@@ -194,6 +211,9 @@ public class Server extends ServerSocket {
                 int num = Integer.valueOf(roomnum).intValue();
                 if (room[num][0].isEmpty()) {
                     room[num][0] = user;
+                    userroom = num;
+                    useroffset = 0;
+                    insertgameinfo(num + 1, user, "enter room");
                     bufferedWriter.write("done\n");
                     bufferedWriter.flush();
                     writers.set(num * 2, bufferedWriter);
@@ -206,6 +226,9 @@ public class Server extends ServerSocket {
                 }
                 else if (room[num][1].isEmpty()) {
                     room[num][1] = user;
+                    userroom = num;
+                    useroffset = 0;
+                    insertgameinfo(num + 1, user, "enter room");
                     bufferedWriter.write("done\n");
                     bufferedWriter.flush();
                     writers.set(num * 2 + 1, bufferedWriter);
@@ -232,8 +255,11 @@ public class Server extends ServerSocket {
                 int num = usermap.get(user) / 2;
                 if (room[num][0].equals(user)) {
                     room[num][0] = "";
+                    userroom = -1;
+                    useroffset = -1;
                     writers.set(num * 2, null);
                     usermap.remove(user);
+                    insertgameinfo(num + 1, user, "exit room");
                     if (!room[num][1].isEmpty()) {
                         writers.get(num * 2 + 1).write("out\n");
                         writers.get(num * 2 + 1).flush();
@@ -241,8 +267,11 @@ public class Server extends ServerSocket {
                 }
                 else if (room[num][1].equals(user)) {
                     room[num][1] = "";
+                    userroom = -1;
+                    useroffset = -1;
                     writers.set(num * 2 + 1, null);
                     usermap.remove(user);
+                    insertgameinfo(num + 1, user, "exit room");
                     if (!room[num][0].isEmpty()) {
                         writers.get(num * 2).write("out\n");
                         writers.get(num * 2).flush();
@@ -262,6 +291,7 @@ public class Server extends ServerSocket {
                 String msg = bufferedReader.readLine();
                 int num = usermap.get(user) / 2;
                 int oppo = (usermap.get(user) + 1) % 2;
+                insertchatrecord(num + 1, user, msg);
                 if (!room[num][oppo].isEmpty()) {
                     writers.get(num * 2 + oppo).write("chat\n");
                     writers.get(num * 2 + oppo).write(msg + "\n");
@@ -278,8 +308,12 @@ public class Server extends ServerSocket {
             try {
                 String x = bufferedReader.readLine();
                 String y = bufferedReader.readLine();
+                int x1 = Integer.valueOf(x).intValue() + 1;
+                int y1 = Integer.valueOf(y).intValue() + 1;
                 int num = usermap.get(user) / 2;
                 int oppo = (usermap.get(user) + 1) % 2;
+                String color = (oppo == 1) ? "black" : "white";
+                insertgameinfo(num + 1, user, color + " place in (" + x1 + ", " + y1 + ")");
                 if (!room[num][oppo].isEmpty()) {
                     writers.get(num * 2 + oppo).write("play\n");
                     writers.get(num * 2 + oppo).write(x + "\n");
@@ -297,6 +331,7 @@ public class Server extends ServerSocket {
             try {
                 int num = usermap.get(user) / 2;
                 int oppo = (usermap.get(user) + 1) % 2;
+                insertgameinfo(num + 1, user, "give up");
                 if (!room[num][oppo].isEmpty()) {
                     writers.get(num * 2 + oppo).write("giveup\n");
                     writers.get(num * 2 + oppo).flush();
@@ -312,6 +347,7 @@ public class Server extends ServerSocket {
             try {
                 int num = usermap.get(user) / 2;
                 int oppo = (usermap.get(user) + 1) % 2;
+                insertgameinfo(num + 1, user, "restart");
                 if (!room[num][oppo].isEmpty()) {
                     writers.get(num * 2 + oppo).write("restart\n");
                     writers.get(num * 2 + oppo).flush();
@@ -323,6 +359,50 @@ public class Server extends ServerSocket {
             }
         }
         
+    }
+    
+    public void insertlog(String username, String operation) {
+        try {
+            PreparedStatement preparedStatement = conn.prepareStatement("insert into log(username,operation,optime) values(?,?,?)");
+            preparedStatement.setString(1, username);
+            preparedStatement.setString(2, operation);
+            preparedStatement.setTimestamp(3, new Timestamp(System.currentTimeMillis()));
+            preparedStatement.executeUpdate();
+        }
+        catch (Exception e) {
+            // TODO: handle exception
+            System.err.println(e.toString());
+        }
+    }
+    
+    public void insertgameinfo(int roomnum, String username, String info) {
+        try {
+            PreparedStatement preparedStatement = conn.prepareStatement("insert into gameinfo(roomnum,username,info,optime) values(?,?,?,?)");
+            preparedStatement.setInt(1, roomnum);
+            preparedStatement.setString(2, username);
+            preparedStatement.setString(3, info);
+            preparedStatement.setTimestamp(4, new Timestamp(System.currentTimeMillis()));
+            preparedStatement.executeUpdate();
+        }
+        catch (Exception e) {
+            // TODO: handle exception
+            System.err.println(e.toString());
+        }
+    }
+    
+    public void insertchatrecord(int roomnum, String username, String chat) {
+        try {
+            PreparedStatement preparedStatement = conn.prepareStatement("insert into chatrecord(roomnum,username,chat,optime) values(?,?,?,?)");
+            preparedStatement.setInt(1, roomnum);
+            preparedStatement.setString(2, username);
+            preparedStatement.setString(3, chat);
+            preparedStatement.setTimestamp(4, new Timestamp(System.currentTimeMillis()));
+            preparedStatement.executeUpdate();
+        }
+        catch (Exception e) {
+            // TODO: handle exception
+            System.err.println(e.toString());
+        }
     }
 
 }

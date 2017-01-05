@@ -27,7 +27,8 @@ public class GameLobby extends JFrame{
     private final int CHESS_WHITE = 2;
 
     PlayRoom playRoom;
-    boolean connection;
+    volatile boolean connection = false;
+    volatile boolean intoroom = false;
     String username;
     JLabel label_join;
     JButton btn_create;
@@ -103,6 +104,7 @@ public class GameLobby extends JFrame{
                 }
                 else {
                     while (connection);
+                    intoroom = true;
                     connection = true;
                     sendMsg("intoroom");
                     sendMsg(String.valueOf(roomnum));
@@ -120,6 +122,7 @@ public class GameLobby extends JFrame{
                         return;
                     }
                     else {
+                        intoroom = false;
                         JOptionPane.showMessageDialog(null, "房间已满，无法进入！", "进入房间", JOptionPane.ERROR_MESSAGE);
                         return;
                     }
@@ -133,6 +136,8 @@ public class GameLobby extends JFrame{
 
     public DefaultListModel<String> getModel() {
         while (connection);
+        if (intoroom)
+            return new DefaultListModel<String>();
         connection = true;
         sendMsg("getroom");
         model = new DefaultListModel<String>();
